@@ -54,7 +54,7 @@ In case it's needed, `with_defer_fwd/1` allows you to call deferred functions in
 
 If `throw_deferred/1` is not called, then the block returns as normal, e.g:
 ```ex
-with_defer
+with_defer do
   defer do
     :logger.error("this shouldn't happen!")
   end
