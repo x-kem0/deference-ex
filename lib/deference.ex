@@ -1,11 +1,4 @@
 defmodule Deference do
-  # defmacro __using__(_opts) do
-  #   quote do
-  #     require Deference
-  #     alias Deference
-  #   end
-  # end
-
   defmacro defer(do: func) do
     quote do
       var!(deference_lib_rollbacks) = [
