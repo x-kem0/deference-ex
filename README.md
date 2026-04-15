@@ -1,7 +1,7 @@
 # Deference
 
 [![Hex.pm](https://img.shields.io/hexpm/v/deference.svg)](https://hex.pm/packages/deference) 
-<!-- [![Documentation](https://img.shields.io/badge/documentation-gray)](https://hexdocs.pm/deference) -->
+[![Documentation](https://img.shields.io/badge/documentation-gray)](https://hexdocs.pm/deference)
 
 A function deferring library inspired by [zig](https://zig.guide/language-basics/defer/)!
 

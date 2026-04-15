@@ -12,7 +12,14 @@ defmodule Deference.MixProject do
       # Docs
       name: "Deference",
       description: "A module for deferring cleanup functions in error cases",
-      source_url: "https://github.com/x-kem0/deference-ex"
+      source_url: "https://github.com/x-kem0/deference-ex",
+      package: [
+        licenses: ["GPL-3.0-or-later"],
+        maintainers: ["x_kemo"],
+        links: %{
+          "GitHub" => "https://github.com/x-kem0/deference-ex"
+        }
+      ]
     ]
   end
 
@@ -23,6 +30,8 @@ defmodule Deference.MixProject do
   end
 
   defp deps do
-    []
+    [
+      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
+    ]
   end
 end
