@@ -1,4 +1,6 @@
 defmodule Deference do
+  import Deference.Impl
+
   @moduledoc """
   A function deferring library inspired by [zig](https://zig.guide/language-basics/defer/)!
 
@@ -11,7 +13,7 @@ defmodule Deference do
       {:ok, user_id} =
         API.User.create("really_cool_username", "really_cool_password")
 
-      defer do
+      err_defer do
         API.User.delete("really_cool_username")
       end
 
@@ -21,10 +23,10 @@ defmodule Deference do
           {:ok, post_id} -> post_id
           {:error, _reason} ->
             # can't post, no reason to keep the user around
-            throw_deferred({:error, :failed_to_post})
+            throw_err({:error, :failed_to_post})
         end
 
-      defer do
+      err_defer do
         API.Post.delete(post_id)
       end
 
@@ -33,7 +35,7 @@ defmodule Deference do
         {:ok, post_id} -> :ok
         {:error, _reason} ->
           # failed to edit post, bail!
-          throw_deferred({:error, :failed_to_edit_post})
+          throw_err({:error, :failed_to_edit_post})
       end
 
     end
@@ -44,76 +46,124 @@ defmodule Deference do
 
   """
 
-  @doc """
-  Defer functions for use upon `throw_deferred/1`
-
-  This function must be within a `with_defer/1` block.
-  """
-  defmacro defer(do: func) do
-    quote do
-      var!(deference_lib_rollbacks) = [
-        fn -> unquote(func) end | var!(deference_lib_rollbacks)
-      ]
-    end
-  end
+  @error_key :__deference_lib_error__
 
   @doc """
   Stop function execution and run all deferred functions, returns the provided value or `:error` by default
 
   This function must be within a `with_defer/1` block.
   """
-  defmacro throw_deferred(value \\ :error) do
+  defmacro throw_err(value \\ :error) do
     quote do
-      throw({:deference_lib_rollback, unquote(value), var!(deference_lib_rollbacks)})
+      throw({unquote(@error_key), unquote(value)})
     end
   end
 
-  @doc false
-  defmacro p_with_defer(forward, expr) do
-    quote do
-      try do
-        var!(deference_lib_rollbacks) = []
-        unquote(expr)
-      catch
-        {:deference_lib_rollback, value, rollbacks} ->
-          unquote(
-            if forward do
-              quote do
-                for rb <- rollbacks |> Enum.reverse() do
-                  rb.()
-                end
-              end
-            else
-              quote do
-                for rb <- rollbacks do
-                  rb.()
-                end
-              end
-            end
-          )
+  @doc """
+  Start a new deferral block
 
-          quote do
-            unquote(value)
-          end
+  `rescue` may also be used for exception handling:
+  ```ex
+  with_defer do
+    ...
+  rescue
+    _ -> :ok
+  end
+  ```
+  """
+  defmacro with_defer(opts, clauses) do
+    fwd = Keyword.get(opts, :fwd, false)
+    safe = Keyword.get(opts, :safe, false)
+
+    expr = Keyword.get(clauses, :do)
+    resc = Keyword.get(clauses, :rescue)
+
+    if expr == nil do
+      raise CompileError,
+        description: "with_defer must have a do clause",
+        file: __CALLER__.file,
+        line: __CALLER__.line
+    end
+
+    if safe and resc != nil do
+      raise CompileError,
+        description: "with_defer cannot take both a safe option and a rescue clause",
+        file: __CALLER__.file,
+        line: __CALLER__.line
+    end
+
+    ast =
+      quote do
+        push_stack()
+
+        try do
+          unquote(expr)
+        rescue
+          e ->
+            run_err_defers(unquote(fwd))
+            reraise e, __STACKTRACE__
+        catch
+          {unquote(@error_key), value} ->
+            run_err_defers(unquote(fwd))
+            value
+
+          v ->
+            v
+        after
+          run_defers(unquote(fwd))
+          pop_stack()
+        end
       end
+
+    cond do
+      resc != nil ->
+        quote do
+          try do
+            unquote(ast)
+          rescue
+            unquote(resc)
+          end
+        end
+
+      safe ->
+        quote do
+          try do
+            unquote(ast)
+          rescue
+            _ -> {:error, :exception}
+          end
+        end
+
+      true ->
+        ast
+    end
+  end
+
+  defmacro with_defer(clauses) do
+    quote do
+      with_defer([], unquote(clauses))
     end
   end
 
   @doc """
-  Starts a deferred function block.
+  Defer an expression to run after any exiting `with_defer/1` under *any* condition, error or not.
   """
-  defmacro with_defer(do: expr) do
+  defmacro defer(do: expr) do
+    %{file: file, line: line} = __CALLER__
+
     quote do
-      p_with_defer(false, unquote(expr))
+      put_defer({fn -> unquote(expr) end, unquote(file), unquote(line)})
     end
   end
 
   @doc """
-  Reverse execution order of `with_defer/1`
+  Defer an expression to run after any exiting `with_defer/1` by either an exception or via `throw_err/1`
   """
-  defmacro with_defer_fwd(do: expr) do
+  defmacro err_defer(do: expr) do
+    %{file: file, line: line} = __CALLER__
+
     quote do
-      p_with_defer(true, unquote(expr))
+      put_err_defer({fn -> unquote(expr) end, unquote(file), unquote(line)})
     end
   end
 end
